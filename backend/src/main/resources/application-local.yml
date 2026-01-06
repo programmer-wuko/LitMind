@@ -1,0 +1,90 @@
+# 本地开发配置（无需Docker，可在IDEA中直接启动）
+# 使用方式：在IDEA的Run Configuration中设置 Active profiles: local
+
+spring:
+  datasource:
+    # 使用本地MySQL数据库
+    url: jdbc:mysql://localhost:3306/litmind?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # 自动更新表结构，不会清空数据
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  # 启用Redis
+  redis:
+    host: localhost
+    port: 6379
+    timeout: 5000ms
+
+  # Kafka可选，如果未安装则禁用异步PDF分析
+  # kafka:
+  #   bootstrap-servers: localhost:9092
+  
+  # 禁用Kafka自动配置（local profile不需要Kafka）
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+  # H2控制台配置（已禁用，使用MySQL）
+  # h2:
+  #   console:
+  #     enabled: true
+  #     path: /h2-console
+
+# 使用本地文件系统替代MinIO
+file:
+  storage:
+    type: local  # local 或 minio
+    local:
+      path: ./uploads  # 本地存储路径
+
+# MinIO配置（如果使用MinIO，取消注释）
+# minio:
+#   endpoint: http://localhost:9000
+#   access-key: minioadmin
+#   secret-key: minioadmin123
+#   bucket: litmind-files
+
+# JWT配置
+jwt:
+  secret: litmind-secret-key-change-in-production-2024
+  expiration: 86400000
+
+# AI服务配置（必须配置）
+ai:
+  provider: openai
+  api-key: ${AI_API_KEY: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}
+  base-url: ${AI_BASE_URL:https://openrouter.ai/api/v1}
+  model: ${AI_MODEL:deepseek/deepseek-r1-0528:free}
+  max-tokens: 4000
+  temperature: 0.7
+
+# 推荐服务配置
+recommendation:
+  enabled: true  # 已实现真实推荐算法，启用推荐功能
+  batch-size: 10
+  cache-ttl: 3600
+  arxiv:
+    enabled: true  # 启用arXiv论文搜索
+  semantic-scholar:
+    enabled: true  # 启用Semantic Scholar论文搜索
+
+logging:
+  level:
+    root: INFO
+    com.litmind: DEBUG
+    # 降低Kafka相关日志级别，减少不必要的警告
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
+

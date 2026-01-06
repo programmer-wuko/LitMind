@@ -1,0 +1,37 @@
+{
+  "name": "litmind-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3030",
+    "build": "next build",
+    "start": "next start -p 3030",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.35",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@tanstack/react-query": "^5.62.0",
+    "axios": "^1.7.9",
+    "zustand": "^4.5.5",
+    "@tanstack/react-query-devtools": "^5.62.0",
+    "react-pdf": "^7.7.3",
+    "pdfjs-dist": "^3.11.174",
+    "lucide-react": "^0.468.0",
+    "clsx": "^2.1.1",
+    "react-hot-toast": "^2.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.2",
+    "tailwindcss": "^3.4.17",
+    "postcss": "^8.4.49",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.35"
+  }
+}
+
