@@ -55,7 +55,7 @@ jwt:
 # AI服务配置
 ai:
   provider: openai # openai, anthropic, local
-  api-key: ${AI_API_KEY:sk-8c85a7d622194dceb4a52620f2524c25}
+  api-key: ${AI_API_KEY:xxx}
   base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
   model: deepseek-chat
   max-tokens: 4000
