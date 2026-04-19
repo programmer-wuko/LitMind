@@ -63,8 +63,9 @@ jwt:
 
 # AI服务配置（必须配置）
 ai:
+  enabled: ${AI_ENABLED:true}
   provider: openai
-  api-key: ${AI_API_KEY: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}
+  api-key: ${AI_API_KEY}
   base-url: ${AI_BASE_URL:https://openrouter.ai/api/v1}
   model: ${AI_MODEL:deepseek/deepseek-r1-0528:free}
   max-tokens: 4000

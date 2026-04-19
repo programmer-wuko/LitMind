@@ -54,6 +54,7 @@ jwt:
 
 # AI服务配置
 ai:
+  enabled: ${AI_ENABLED:true}
   provider: ${AI_PROVIDER:openai}
   api-key: ${AI_API_KEY}
   base-url: ${AI_BASE_URL:https://api.deepseek.com/v1}
