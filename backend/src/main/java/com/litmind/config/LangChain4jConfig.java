@@ -1,8 +1,8 @@
 package com.litmind.config;
 
-import io.github.langchain4j.model.chat.ChatLanguageModel;
-import io.github.langchain4j.model.chat.DisabledChatLanguageModel;
-import io.github.langchain4j.model.chat.OpenAiChatModel;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.DisabledChatLanguageModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

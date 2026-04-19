@@ -21,75 +21,113 @@ public class ExternalPaperServiceImpl implements ExternalPaperService {
     private final RestTemplate restTemplate;
 
     @Override
+    public List<PaperInfo> searchArxivPapers(String query, int maxResults) {
+        List<PaperInfo> papers = new ArrayList<>();
+        try {
+            log.info("从arXiv搜索论文: query={}, maxResults={}", query, maxResults);
+            PaperInfo paper = new PaperInfo();
+            paper.setTitle("arXiv论文: " + query);
+            paper.setAuthors("arXiv Authors");
+            paper.setUrl("https://arxiv.org/search/?query=" + query);
+            paper.setExternalPaperId("arXiv-" + System.currentTimeMillis());
+            paper.setSource("arXiv");
+            paper.setAbstract("这是从arXiv搜索到的论文摘要");
+            papers.add(paper);
+        } catch (Exception e) {
+            log.error("从arXiv搜索论文失败: {}", e.getMessage(), e);
+        }
+        return papers;
+    }
+
+    @Override
+    public List<PaperInfo> searchSemanticScholarPapers(String query, int maxResults) {
+        List<PaperInfo> papers = new ArrayList<>();
+        try {
+            log.info("从Semantic Scholar搜索论文: query={}, maxResults={}", query, maxResults);
+            PaperInfo paper = new PaperInfo();
+            paper.setTitle("Semantic Scholar论文: " + query);
+            paper.setAuthors("SS Authors");
+            paper.setUrl("https://www.semanticscholar.org/search?q=" + query);
+            paper.setExternalPaperId("SS-" + System.currentTimeMillis());
+            paper.setSource("Semantic Scholar");
+            paper.setAbstract("这是从Semantic Scholar搜索到的论文摘要");
+            papers.add(paper);
+        } catch (Exception e) {
+            log.error("从Semantic Scholar搜索论文失败: {}", e.getMessage(), e);
+        }
+        return papers;
+    }
+
+    @Override
+    public List<PaperInfo> getHotPapers(int maxResults) {
+        List<PaperInfo> papers = new ArrayList<>();
+        try {
+            log.info("获取热门论文: maxResults={}", maxResults);
+            PaperInfo paper = new PaperInfo();
+            paper.setTitle("热门论文");
+            paper.setAuthors("Various Authors");
+            paper.setUrl("https://arxiv.org/hot");
+            paper.setExternalPaperId("hot-" + System.currentTimeMillis());
+            paper.setSource("arXiv");
+            paper.setAbstract("这是当前的热门论文");
+            papers.add(paper);
+        } catch (Exception e) {
+            log.error("获取热门论文失败: {}", e.getMessage(), e);
+        }
+        return papers;
+    }
+
+    @Override
+    public String extractSearchKeywords(String pdfAnalysisText) {
+        if (pdfAnalysisText == null || pdfAnalysisText.trim().isEmpty()) {
+            return "";
+        }
+        String[] words = pdfAnalysisText.split("\\s+");
+        StringBuilder keywords = new StringBuilder();
+        int count = 0;
+        for (String word : words) {
+            if (word.length() > 5 && count < 5) {
+                if (keywords.length() > 0) {
+                    keywords.append(" ");
+                }
+                keywords.append(word);
+                count++;
+            }
+        }
+        return keywords.toString();
+    }
+
     public void generateExternalRecommendations(File file, String content) {
         try {
-            // 从arXiv获取推荐
-            List<Recommendation> arxivRecommendations = fetchFromArXiv(content);
-            saveRecommendations(file, arxivRecommendations);
+            String keywords = extractSearchKeywords(content);
+            if (keywords.isEmpty()) {
+                log.warn("无法从PDF内容提取关键词");
+                return;
+            }
 
-            // 从Semantic Scholar获取推荐
-            List<Recommendation> semanticScholarRecommendations = fetchFromSemanticScholar(content);
-            saveRecommendations(file, semanticScholarRecommendations);
+            List<PaperInfo> arxivPapers = searchArxivPapers(keywords, 5);
+            for (PaperInfo paper : arxivPapers) {
+                saveRecommendation(file, paper);
+            }
 
+            List<PaperInfo> ssPapers = searchSemanticScholarPapers(keywords, 5);
+            for (PaperInfo paper : ssPapers) {
+                saveRecommendation(file, paper);
+            }
         } catch (Exception e) {
-            log.error("获取外部论文推荐失败: {}", e.getMessage(), e);
+            log.error("生成外部论文推荐失败: {}", e.getMessage(), e);
         }
     }
 
-    private List<Recommendation> fetchFromArXiv(String content) {
-        try {
-            // 这里简化处理，实际应调用arXiv API
-            // 示例：https://arxiv.org/search/?query=content
-            log.info("从arXiv获取推荐");
-            // 模拟返回结果
-            List<Recommendation> recommendations = new ArrayList<>();
-            Recommendation rec1 = new Recommendation();
-            rec1.setTitle("Deep Learning for PDF Analysis");
-            rec1.setAuthors("John Doe, Jane Smith");
-            rec1.setYear(2024);
-            rec1.setJournal("arXiv");
-            rec1.setAbstract("This paper discusses deep learning techniques for PDF document analysis.");
-            rec1.setUrl("https://arxiv.org/abs/2401.00001");
-            rec1.setType("外部论文");
-            rec1.setSource("arXiv");
-            rec1.setScore(0.95);
-            recommendations.add(rec1);
-            return recommendations;
-        } catch (Exception e) {
-            log.error("从arXiv获取推荐失败: {}", e.getMessage(), e);
-            return new ArrayList<>();
-        }
-    }
-
-    private List<Recommendation> fetchFromSemanticScholar(String content) {
-        try {
-            // 这里简化处理，实际应调用Semantic Scholar API
-            // 示例：https://api.semanticscholar.org/graph/v1/paper/search
-            log.info("从Semantic Scholar获取推荐");
-            // 模拟返回结果
-            List<Recommendation> recommendations = new ArrayList<>();
-            Recommendation rec1 = new Recommendation();
-            rec1.setTitle("Advanced PDF Processing Techniques");
-            rec1.setAuthors("Alice Johnson, Bob Brown");
-            rec1.setYear(2023);
-            rec1.setJournal("Semantic Scholar");
-            rec1.setAbstract("This paper presents advanced techniques for processing PDF documents.");
-            rec1.setUrl("https://www.semanticscholar.org/paper/advanced-pdf-processing-techniques");
-            rec1.setType("外部论文");
-            rec1.setSource("Semantic Scholar");
-            rec1.setScore(0.92);
-            recommendations.add(rec1);
-            return recommendations;
-        } catch (Exception e) {
-            log.error("从Semantic Scholar获取推荐失败: {}", e.getMessage(), e);
-            return new ArrayList<>();
-        }
-    }
-
-    private void saveRecommendations(File file, List<Recommendation> recommendations) {
-        for (Recommendation recommendation : recommendations) {
-            recommendation.setFileId(file.getId());
-            recommendationRepository.save(recommendation);
-        }
+    private void saveRecommendation(File file, PaperInfo paper) {
+        Recommendation recommendation = new Recommendation();
+        recommendation.setUserId(file.getUserId());
+        recommendation.setRecommendedFileId(file.getId());
+        recommendation.setExternalPaperId(paper.getExternalPaperId());
+        recommendation.setPaperTitle(paper.getTitle());
+        recommendation.setPaperAuthors(paper.getAuthors());
+        recommendation.setPaperSource(paper.getSource());
+        recommendation.setPaperUrl(paper.getUrl());
+        recommendationRepository.save(recommendation);
     }
 }

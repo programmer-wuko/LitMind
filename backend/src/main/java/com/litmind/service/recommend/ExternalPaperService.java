@@ -1,5 +1,7 @@
 package com.litmind.service.recommend;
 
+import com.litmind.model.entity.File;
+
 import java.util.List;
 
 public interface ExternalPaperService {
@@ -11,6 +13,8 @@ public interface ExternalPaperService {
     List<PaperInfo> getHotPapers(int maxResults);
 
     String extractSearchKeywords(String pdfAnalysisText);
+
+    void generateExternalRecommendations(File file, String content);
 
     class PaperInfo {
         private String title;

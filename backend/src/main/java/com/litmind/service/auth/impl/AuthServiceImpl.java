@@ -1,17 +1,16 @@
 package com.litmind.service.auth.impl;
 
 import com.litmind.common.exception.BusinessException;
-import com.litmind.model.dto.UserDTO;
+import com.litmind.dto.auth.LoginRequest;
+import com.litmind.dto.auth.LoginResponse;
+import com.litmind.dto.auth.RegisterRequest;
+import com.litmind.dto.auth.UserInfoResponse;
 import com.litmind.model.entity.User;
-import com.litmind.model.request.LoginRequest;
-import com.litmind.model.request.RegisterRequest;
 import com.litmind.repository.UserRepository;
 import com.litmind.service.auth.AuthService;
 import com.litmind.service.auth.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -28,66 +27,71 @@ public class AuthServiceImpl implements AuthService, UserDetailsService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("用户不存在"));
-        
+
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getUsername())
                 .password(user.getPassword())
-                .roles(user.getRole())
+                .roles("USER") // 默cd认角色
                 .build();
     }
 
     @Override
     @Transactional
-    public UserDTO register(RegisterRequest request) {
-        // 检查用户名是否已存在
+    public LoginResponse register(RegisterRequest request) {
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
             throw new BusinessException(400, "用户名已存在");
         }
 
-        // 检查邮箱是否已存在
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             throw new BusinessException(400, "邮箱已存在");
         }
 
-        // 创建用户
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setEmail(request.getEmail());
-        user.setName(request.getName());
-        user.setRole("USER"); // 默认角色
+        user.setNickname(request.getNickname());
 
         User savedUser = userRepository.save(user);
-        return convertToDTO(savedUser);
+
+        LoginResponse response = new LoginResponse();
+        response.setToken(jwtService.generateToken(loadUserByUsername(savedUser.getUsername()), savedUser.getId()));
+        response.setUsername(savedUser.getUsername());
+        response.setUserId(savedUser.getId());
+        return response;
     }
 
     @Override
-    public String login(LoginRequest request) {
+    public LoginResponse login(LoginRequest request) {
         try {
-            // 验证用户名和密码
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            request.getUsername(),
-                            request.getPassword()
-                    )
-            );
+            // 直接验证用户名和密码
+            User user = userRepository.findByUsername(request.getUsername())
+                    .orElseThrow(() -> new BusinessException(401, "用户名或密码错误"));
+            
+            // 验证密码
+            if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                throw new BusinessException(401, "用户名或密码错误");
+            }
+            
+            // 加载用户详情
+            UserDetails userDetails = loadUserByUsername(user.getUsername());
+            
+            // 生成token
+            String token = jwtService.generateToken(userDetails, user.getId());
 
-            // 设置安全上下文
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            // 生成JWT令牌
-            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-            User user = userRepository.findByUsername(userDetails.getUsername())
-                    .orElseThrow(() -> new BusinessException(404, "用户不存在"));
-
-            return jwtService.generateToken(userDetails, user.getId());
+            LoginResponse response = new LoginResponse();
+            response.setToken(token);
+            response.setUsername(user.getUsername());
+            response.setUserId(user.getId());
+            return response;
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("登录失败: {}", e.getMessage(), e);
             throw new BusinessException(401, "用户名或密码错误");
@@ -95,8 +99,7 @@ public class AuthServiceImpl implements AuthService, UserDetailsService {
     }
 
     @Override
-    public UserDTO getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    public UserInfoResponse getCurrentUserInfo(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new BusinessException(401, "未认证");
         }
@@ -105,17 +108,11 @@ public class AuthServiceImpl implements AuthService, UserDetailsService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new BusinessException(404, "用户不存在"));
 
-        return convertToDTO(user);
-    }
-
-    private UserDTO convertToDTO(User user) {
-        UserDTO dto = new UserDTO();
-        dto.setId(user.getId());
-        dto.setUsername(user.getUsername());
-        dto.setEmail(user.getEmail());
-        dto.setName(user.getName());
-        dto.setRole(user.getRole());
-        dto.setCreatedAt(user.getCreatedAt());
-        return dto;
+        UserInfoResponse response = new UserInfoResponse();
+        response.setId(user.getId());
+        response.setUsername(user.getUsername());
+        response.setEmail(user.getEmail());
+        response.setNickname(user.getNickname());
+        return response;
     }
 }

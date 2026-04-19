@@ -1,11 +1,12 @@
 package com.litmind.service.recommend.impl;
 
 import com.litmind.common.exception.BusinessException;
-import com.litmind.model.dto.RecommendationDTO;
 import com.litmind.model.entity.File;
 import com.litmind.model.entity.Recommendation;
+import com.litmind.model.entity.UserBehavior;
 import com.litmind.repository.FileRepository;
 import com.litmind.repository.RecommendationRepository;
+import com.litmind.repository.UserBehaviorRepository;
 import com.litmind.service.file.FileStorageService;
 import com.litmind.service.recommend.ExternalPaperService;
 import com.litmind.service.recommend.RecommendationService;
@@ -17,7 +18,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,53 +31,84 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private final FileRepository fileRepository;
     private final RecommendationRepository recommendationRepository;
+    private final UserBehaviorRepository userBehaviorRepository;
     private final FileStorageService fileStorageService;
     private final Optional<ExternalPaperService> externalPaperService;
-    
-    @Value("${openai.api-key}")
+
+    @Value("${ai.api-key:}")
     private String openaiApiKey;
 
     @Override
-    public List<RecommendationDTO> getRecommendationsByFileId(Long fileId) {
-        // 验证文件是否存在
-        fileRepository.findById(fileId)
-                .orElseThrow(() -> new BusinessException(404, "文件不存在"));
-        
-        List<Recommendation> recommendations = recommendationRepository.findByFileId(fileId);
-        return recommendations.stream().map(this::convertToDTO).toList();
+    public List<Recommendation> getUserRecommendations(Long userId) {
+        List<File> userFiles = fileRepository.findByUserId(userId);
+        return userFiles.stream()
+                .map(file -> recommendationRepository.findByRecommendedFileId(file.getId()))
+                .flatMap(List::stream)
+                .toList();
     }
 
     @Override
     @Transactional
-    public void generateRecommendations(Long fileId) {
-        File file = fileRepository.findById(fileId)
-                .orElseThrow(() -> new BusinessException(404, "文件不存在"));
+    public void generateRecommendations(Long userId) {
+        List<File> userFiles = fileRepository.findByUserId(userId);
 
-        try {
-            // 1. 读取文件内容
-            String fileContent = readFileContent(file);
-            
-            // 2. 使用LangChain4j生成推荐
-            if (openaiApiKey != null && !openaiApiKey.isEmpty()) {
-                generateAiRecommendations(file, fileContent);
+        for (File file : userFiles) {
+            try {
+                if (file.getFileType() != null && file.getFileType().startsWith("application/pdf")) {
+                    String fileContent = readFileContent(file);
+
+                    if (openaiApiKey != null && !openaiApiKey.isEmpty()) {
+                        generateAiRecommendations(file, fileContent);
+                    }
+
+                    if (externalPaperService.isPresent()) {
+                        externalPaperService.get().generateExternalRecommendations(file, fileContent);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("为文件生成推荐失败: fileId={}, error={}", file.getId(), e.getMessage());
             }
-            
-            // 3. 生成外部论文推荐
-            if (externalPaperService.isPresent()) {
-                externalPaperService.get().generateExternalRecommendations(file, fileContent);
-            }
-            
-        } catch (Exception e) {
-            log.error("生成推荐失败: {}", e.getMessage(), e);
-            // 不抛出异常，避免影响主流程
         }
     }
 
+    @Override
+    @Transactional
+    public void recordUserBehavior(Long userId, Long fileId, String behaviorType, String behaviorData) {
+        fileRepository.findByIdAndUserId(fileId, userId)
+                .orElseThrow(() -> new BusinessException(404, "文件不存在"));
+
+        UserBehavior behavior = new UserBehavior();
+        behavior.setUserId(userId);
+        behavior.setFileId(fileId);
+        behavior.setBehaviorType(behaviorType);
+        behavior.setBehaviorData(behaviorData);
+
+        userBehaviorRepository.save(behavior);
+    }
+
+    @Override
+    @Transactional
+    public void updateRecommendationFeedback(Long userId, Long recommendationId, String feedback) {
+        Recommendation recommendation = recommendationRepository.findById(recommendationId)
+                .orElseThrow(() -> new BusinessException(404, "推荐不存在"));
+
+        fileRepository.findByIdAndUserId(recommendation.getRecommendedFileId(), userId)
+                .orElseThrow(() -> new BusinessException(403, "无权访问此推荐"));
+
+        recommendation.setFeedback(feedback);
+        recommendationRepository.save(recommendation);
+    }
+
     private String readFileContent(File file) {
-        try (InputStream inputStream = fileStorageService.downloadFile(file.getFilePath())) {
-            // 读取文件内容（这里简化处理，实际应根据文件类型进行适当处理）
-            byte[] bytes = inputStream.readAllBytes();
-            return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        try (InputStream inputStream = fileStorageService.downloadFile(file.getFilePath());
+             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, "UTF-8"))) {
+            StringBuilder content = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+            log.info("PDF文本提取完成，长度: {}", content.length());
+            return content.toString();
         } catch (Exception e) {
             log.error("读取文件内容失败: {}", e.getMessage(), e);
             return "";
@@ -83,20 +117,15 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private void generateAiRecommendations(File file, String content) {
         try {
-            // 初始化OpenAI模型
             OpenAiChatModel model = OpenAiChatModel.builder()
                     .apiKey(openaiApiKey)
                     .modelName("gpt-4o-mini")
                     .build();
 
-            // 创建AI服务
             PaperRecommender recommender = AiServices.create(PaperRecommender.class, model);
-
-            // 生成推荐
             String recommendations = recommender.recommendPapers(content);
             log.info("AI推荐结果: {}", recommendations);
 
-            // 解析并保存推荐
             saveAiRecommendations(file, recommendations);
         } catch (Exception e) {
             log.error("AI推荐失败: {}", e.getMessage(), e);
@@ -104,38 +133,19 @@ public class RecommendationServiceImpl implements RecommendationService {
     }
 
     private void saveAiRecommendations(File file, String recommendations) {
-        // 简单解析推荐结果，实际应根据返回格式进行更复杂的解析
         String[] lines = recommendations.split("\\n");
         for (String line : lines) {
             if (!line.trim().isEmpty()) {
                 Recommendation recommendation = new Recommendation();
-                recommendation.setFileId(file.getId());
-                recommendation.setTitle(line.trim());
-                recommendation.setType("AI推荐");
-                recommendation.setSource("OpenAI");
+                recommendation.setUserId(file.getUserId());
+                recommendation.setRecommendedFileId(file.getId());
+                recommendation.setPaperTitle(line.trim());
+                recommendation.setPaperSource("OpenAI");
                 recommendationRepository.save(recommendation);
             }
         }
     }
 
-    private RecommendationDTO convertToDTO(Recommendation recommendation) {
-        RecommendationDTO dto = new RecommendationDTO();
-        dto.setId(recommendation.getId());
-        dto.setFileId(recommendation.getFileId());
-        dto.setTitle(recommendation.getTitle());
-        dto.setAuthors(recommendation.getAuthors());
-        dto.setYear(recommendation.getYear());
-        dto.setJournal(recommendation.getJournal());
-        dto.setAbstract(recommendation.getAbstract());
-        dto.setUrl(recommendation.getUrl());
-        dto.setType(recommendation.getType());
-        dto.setSource(recommendation.getSource());
-        dto.setScore(recommendation.getScore());
-        dto.setCreatedAt(recommendation.getCreatedAt());
-        return dto;
-    }
-
-    // LangChain4j服务接口
     interface PaperRecommender {
         @dev.langchain4j.service.SystemMessage("你是一个专业的学术论文推荐助手，根据用户提供的论文内容，推荐5篇最相关的论文。")
         String recommendPapers(String content);
